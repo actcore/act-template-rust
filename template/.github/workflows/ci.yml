@@ -72,7 +72,6 @@ jobs:
     permissions:
       packages: write
       id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -80,15 +79,18 @@ jobs:
           name: component.wasm
           path: target/wasm32-wasip2/release/
       - uses: taiki-e/install-action@just
+      - uses: sigstore/cosign-installer@v3
       - name: Publish
         id: publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: just publish
-      - name: Attest
+      - name: Sign (keyless via GitHub OIDC)
         if: steps.publish.outputs.digest != ''
-        uses: actions/attest@v4
-        with:
-          subject-name: ${{ steps.publish.outputs.image }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
-          push-to-registry: true
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          SUBJECT: ${{ steps.publish.outputs.image }}@${{ steps.publish.outputs.digest }}
+        run: |
+          echo "$REGISTRY_TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
+          cosign sign --yes "$SUBJECT"

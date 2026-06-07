@@ -4,6 +4,15 @@ All notable changes to this template are documented here.
 
 Downstream components generated from this template should note which version they were created from and apply relevant entries when upgrading.
 
+## [0.5.0] - 2026-06-07
+
+### Added
+- **Keyless signing on publish**: CI signs the published component with `cosign sign` (Sigstore keyless via GitHub OIDC). The Fulcio certificate records the source repo, commit, and workflow — no long-lived keys. Replaces the previous `actions/attest` step.
+
+### Changed
+- **Publish via `act-build push`** (CNCF Wasm OCI Artifact conformance); the `oras` CLI is no longer required — registry auth flows through `GITHUB_TOKEN`.
+- **Dependency bump**: default deps to act-sdk 0.7, wit-bindgen 0.57.
+
 ## [0.4.0] - 2026-03-31
 
 ### Added
