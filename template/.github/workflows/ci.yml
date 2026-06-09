@@ -80,6 +80,8 @@ jobs:
           path: target/wasm32-wasip2/release/
       - uses: taiki-e/install-action@just
       - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v3.1.1'   # 3.x signs as an OCI 1.1 referrer (not a .sig tag)
       - name: Publish
         id: publish
         env:
