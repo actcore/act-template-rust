@@ -4,6 +4,14 @@ All notable changes to this template are documented here.
 
 Downstream components generated from this template should note which version they were created from and apply relevant entries when upgrading.
 
+## [0.7.0] - 2026-06-13
+
+### Added
+- **`component_ref` question**: the OCI reference a component publishes to (registry/namespace/name, no tag) is now an explicit copier answer, defaulting to `actpkg.dev/library/<name>`. Override at publish time with the `OCI_REF` env var.
+
+### Changed
+- **Publish target**: the justfile now publishes to `component_ref` instead of deriving `actpkg.dev/<github-owner>` from the git remote (the owner derivation put official components under the wrong namespace).
+
 ## [0.6.0] - 2026-06-13
 
 ### Changed

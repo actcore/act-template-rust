@@ -16,6 +16,13 @@ description:
   type: str
   help: Component description
 
+component_ref:
+  type: str
+  help: >-
+    OCI reference to publish this component to (registry/namespace/name, no tag).
+    Override at publish time with the OCI_REF env var.
+  default: "actpkg.dev/library/{{ project_name }}"
+
 needs_http:
   type: bool
   default: false
