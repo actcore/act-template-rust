@@ -4,6 +4,12 @@ All notable changes to this template are documented here.
 
 Downstream components generated from this template should note which version they were created from and apply relevant entries when upgrading.
 
+## [0.6.0] - 2026-06-13
+
+### Changed
+- **Dependency bump**: default scaffold deps to `act-sdk` 0.8 and `wit-bindgen` 0.58 (the WASI 0.3 / final toolchain). act-sdk 0.8 generates `wit_bindgen::spawn_local`, so the matching `wit-bindgen = "0.58"` is required.
+- **CI**: publish and sign generated components to actpkg.dev under the repo owner's namespace; bumped `cosign-installer` to v4.1.2 (drops the explicit cosign-release pin) and pinned cosign 3.x for referrer signatures; the e2e harness now selects its port with `shuf`.
+
 ## [0.5.0] - 2026-06-07
 
 ### Added
