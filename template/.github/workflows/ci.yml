@@ -16,13 +16,12 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: wkg
+          bins: wkg, just
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: taiki-e/install-action@just
       - run: just init
       - run: just build
       - uses: actions/upload-artifact@v7
@@ -34,14 +33,13 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: wkg
+          bins: wkg, just
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: cargo fmt -- --check
-      - uses: taiki-e/install-action@just
       - run: just init
       - run: cargo clippy -- -D warnings
 
@@ -50,12 +48,16 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: component.wasm
           path: target/wasm32-wasip2/release/
-      - uses: taiki-e/install-action@just
+      - uses: moonrepo/setup-rust@v1
+        with:
+          bins: just, hurl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: just test
 
   publish:
@@ -67,12 +69,16 @@ jobs:
       contents: read      # checkout
       id-token: write     # keyless cosign signing via GitHub OIDC
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: component.wasm
           path: target/wasm32-wasip2/release/
-      - uses: taiki-e/install-action@just
+      - uses: moonrepo/setup-rust@v1
+        with:
+          bins: just
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@v4.1.2   # defaults to cosign 3.x → OCI 1.1 referrer signatures
       - name: Publish
         id: publish
