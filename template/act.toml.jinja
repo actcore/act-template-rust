@@ -1,11 +1,37 @@
 [std]
 name = "{{ project_name }}"
-{% if needs_http or needs_filesystem %}
+{% if needs_http or needs_filesystem or needs_sockets %}
 
 {% if needs_http %}
 [std.capabilities."wasi:http"]
 {% endif %}
 {% if needs_filesystem %}
 [std.capabilities."wasi:filesystem"]
+description = "Describe why this component needs filesystem access."
+
+# Authorization (the ceiling). `~` expands to the user's home on the host.
+[[std.capabilities."wasi:filesystem".allow]]
+path = "~/.{{ project_name }}/**"
+mode = "rw"
+
+# Optional topology: bind a host dir to a stable guest path so your code can
+# open a fixed path regardless of the host user. Authorization still comes from
+# the `allow` entry above (keep the host paths in sync).
+# [[std.capabilities."wasi:filesystem".params.mounts]]
+# type = "bind"
+# guest = "/data"
+# host = "~/.{{ project_name }}"
+{% endif %}
+{% if needs_sockets %}
+[std.capabilities."wasi:sockets"]
+description = "Describe why this component needs raw socket access."
+
+# Authorization (the ceiling). `host = "*"` allows any host; `ports` is REQUIRED
+# by the published act-build (act-types 0.12) — list the concrete ports you
+# connect to. Omitting `ports` fails `act-build pack` with "missing field ports".
+[[std.capabilities."wasi:sockets".allow]]
+host = "*"
+ports = [5432]
+protocols = ["tcp"]
 {% endif %}
 {% endif %}

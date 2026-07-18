@@ -32,3 +32,8 @@ needs_filesystem:
   type: bool
   default: false
   help: Does this component need filesystem access?
+
+needs_sockets:
+  type: bool
+  default: false
+  help: Does this component need raw TCP/UDP socket access (e.g. a database client)?
