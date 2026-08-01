@@ -4,6 +4,14 @@ name = "{{ project_name }}"
 
 {% if needs_http %}
 [std.capabilities."wasi:http"]
+description = "Describe why this component needs outbound HTTP access."
+
+# Authorization (the ceiling). Narrow `host` to the specific API this component
+# talks to — the ceiling is what `act info` reports and what a deployment grant can
+# only ever narrow further, never widen. Use `*` only when the address is supplied
+# by the caller and genuinely cannot be known at build time.
+[[std.capabilities."wasi:http".allow]]
+host = "*"
 {% endif %}
 {% if needs_filesystem %}
 [std.capabilities."wasi:filesystem"]

@@ -1,6 +1,10 @@
 wasm := "target/wasm32-wasip2/release/component_{{ project_name | replace('-', '_') }}.wasm"
 # OCI reference to publish to (registry/namespace/name, no tag). Override with OCI_REF.
 component_ref := env("OCI_REF", "{{ component_ref }}")
+# Capability grants the e2e host needs, derived from the answers given at scaffold
+# time. Without these the default `ask` policy degrades to deny in a headless run and
+# every capability-using e2e test fails.
+grants := "{% if needs_http %} --allow wasi:http{% endif %}{% if needs_filesystem %} --allow wasi:filesystem{% endif %}{% if needs_sockets %} --allow wasi:sockets{% endif %}"
 {% raw %}
 act := env("ACT", "npx @actcore/act")
 actbuild := env("ACT_BUILD", "npx @actcore/act-build")
@@ -29,7 +33,7 @@ pack: build
 test: pack
     #!/usr/bin/env bash
     set -euo pipefail
-    {{act}} run {{wasm}} --http --listen "{{addr}}" &
+    {{act}} run {{wasm}} --http --listen "{{addr}}"{{grants}} &
     trap "kill $!" EXIT
     curl --retry 60 --retry-connrefused --retry-delay 1 -fsS -o /dev/null {{baseurl}}/info
     {{hurl}} --test --variable "baseurl={{baseurl}}" e2e/*.hurl
