@@ -4,6 +4,16 @@ All notable changes to this template are documented here.
 
 Downstream components generated from this template should note which version they were created from and apply relevant entries when upgrading.
 
+## [Unreleased]
+
+### Changed
+- **`wit-bindgen` is no longer a scaffold dependency.** `act-sdk` 0.14 routes the
+  generated bindings through its own copy, so `Cargo.toml` no longer lists
+  `wit-bindgen`. Upgrading an existing component: bump `act-sdk` to `0.14` and
+  delete the `wit-bindgen` line. If your code calls `wit_bindgen::spawn_local`
+  directly, switch to `act_sdk::spawn_local`.
+- **Dependency bump**: default scaffold dep to `act-sdk` 0.14.
+
 ## [0.7.0] - 2026-06-13
 
 ### Added
