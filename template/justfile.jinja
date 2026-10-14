@@ -2,7 +2,12 @@ wasm := "target/wasm32-wasip2/release/component_{{ project_name | replace('-', '
 # OCI reference to publish to (registry/namespace/name, no tag). Override with OCI_REF.
 component_ref := env("OCI_REF", "{{ component_ref }}")
 {% raw %}
-act := env("ACT", "npx @actcore/act")
+# Prefer a locally built release `act` when this checkout sits in the dev
+# workspace next to act-cli: the e2e suite spawns one `act run --mcp` per
+# test, and a debug binary repeats the Cranelift compilation in every one
+# of them. Standalone checkouts fall through to the npm package.
+_act_local := source_directory() / ".." / ".." / "act-cli" / "target" / "release" / "act"
+act := env("ACT", if path_exists(_act_local) == "true" { _act_local } else { "npx @actcore/act" })
 actbuild := env("ACT_BUILD", "npx @actcore/act-build")
 
 # Fetch WIT deps from the registry (ghcr.io/actcore) into wit/deps/.
@@ -26,11 +31,17 @@ build:
 pack:
     {{actbuild}} pack {{wasm}}
 
-# Drives the component through `act run --mcp` with a real MCP client, so the
-# tests observe what an agent observes. Capability grants live in
-# e2e/conftest.py, not here.
+# Drives the component through `act run --mcp` with a real MCP client (rust,
+# rmcp), so the tests observe what an agent observes. Grants go on the act
+# command line inside e2e/tests/e2e.rs, not here.
+#
+# Heavyweight components — an instance worth hundreds of MB of RSS, or a
+# module whose Cranelift compile is slow on a cold cache — must serialize:
+# add `-- --test-threads=1`. Cargo's parallel default spawns one component
+# instance per test and OOM'd a CI runner for servo that way. Scaffolds are
+# light, so parallel stays the default here.
 test: build
-    ACT="{{act}}" uv run --project e2e pytest e2e/ -v
+    cd e2e && ACT="{{act}}" WASM="../{{wasm}}" cargo test
 
 publish: build
     #!/usr/bin/env bash
