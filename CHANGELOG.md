@@ -13,6 +13,15 @@ Downstream components generated from this template should note which version the
   delete the `wit-bindgen` line. If your code calls `wit_bindgen::spawn_local`
   directly, switch to `act_sdk::spawn_local`.
 - **Dependency bump**: default scaffold dep to `act-sdk` 0.14.
+- **E2E suite is the rust rmcp harness** (the 2026-10-05 fleet decision): a
+  standalone host-only `e2e/` crate driving `act run --mcp` with the rmcp
+  client replaces the python pytest + fastmcp suite. `just test` runs
+  `cd e2e && cargo test`; the `uv` step is gone from CI. `copier update`
+  deletes the retired python files (they are template-owned) and brings in
+  `e2e/Cargo.toml`, `e2e/.cargo/config.toml` and `e2e/tests/e2e.rs` — merge
+  any author-owned tests into the rust file, and keep grants on the `act run`
+  command line there. Heavyweight components should add `-- --test-threads=1`:
+  parallel component instances OOM'd a CI runner for servo.
 
 ## [0.7.0] - 2026-06-13
 

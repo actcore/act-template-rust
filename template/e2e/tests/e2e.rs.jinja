@@ -1,0 +1,170 @@
+//! Drive the packed component through `act run --mcp` with a real MCP client.
+//!
+//! The tests observe exactly what an agent observes, over the same client
+//! stack (`rmcp`) the host bridge itself is built on.
+//!
+//! Env: WASM — path to the packed component (set by the justfile);
+//!      ACT  — the act invocation (default `act`; `npx @actcore/act`, the
+//!             component justfile's default, also works — whitespace-split).
+
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
+
+use rmcp::{
+    ServiceExt,
+    model::CallToolRequestParams,
+    transport::{ConfigureCommandExt, TokioChildProcess},
+};
+use serde_json::{Value, json};
+use tokio::io::AsyncBufReadExt;
+
+/// `().serve(transport)` hands back the client-role service running over the
+/// child process: role first, the unit client handler second.
+type Client = rmcp::service::RunningService<rmcp::service::RoleClient, ()>;
+
+/// Bounds the connect, not the test body: `act run --mcp` instantiates the
+/// component before it answers `initialize`, and a stalled handshake
+/// otherwise consumes the whole runner budget with no diagnostic at all.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn wasm_path() -> PathBuf {
+    PathBuf::from(std::env::var("WASM").unwrap_or_else(|_| {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../target/wasm32-wasip2/release/component_{{ project_name | replace('-', '_') }}.wasm"
+        )
+        .into()
+    }))
+}
+
+/// The ACT invocation, honouring the same override the component justfile
+/// uses. Its default there can be `npx @actcore/act` — two words — which
+/// cannot be `argv[0]` for a non-shell spawn, so the value is
+/// whitespace-split into program + leading args.
+fn act_argv() -> Vec<String> {
+    std::env::var("ACT")
+        .unwrap_or_else(|_| "act".into())
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+/// Spawn `act run <wasm> --mcp` with the grants this component needs.
+///
+/// Grants are NOT optional: the default policy mode is `ask` and a headless
+/// run degrades it to deny. Replace the examples below with the capabilities
+/// the scaffold answers said the component needs — and never above the
+/// ceiling declared in `act.toml`.
+fn act_command() -> tokio::process::Command {
+    let mut argv = act_argv();
+    let mut cmd = tokio::process::Command::new(argv.remove(0));
+    cmd.args(argv);
+    cmd.arg("run").arg(wasm_path()).arg("--mcp");
+    // One `--grant` per capability class; delete what does not apply.
+    //
+    // cmd.args(["--grant",
+    //     r#"{"wasi:filesystem":{"mode":"allowlist","allow":[{"path":"/data/**","mode":"rw"}]}}"#]);
+    // cmd.args(["--allow", "http=api.example.com"]);
+    cmd
+}
+
+/// Spawn with stderr captured: the audit trail (refusals, per-call rollup)
+/// writes there unconditionally — `RUST_LOG` never silences it.
+fn spawn_with_captured_stderr() -> (TokioChildProcess, Arc<tokio::sync::Mutex<String>>) {
+    let (transport, stderr) = TokioChildProcess::builder(act_command())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn act run --mcp with piped stderr");
+
+    let captured = Arc::new(tokio::sync::Mutex::new(String::new()));
+    let sink = captured.clone();
+    let mut lines = tokio::io::BufReader::new(stderr.expect("stderr was piped")).lines();
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = lines.next_line().await {
+            sink.lock().await.push_str(&line);
+            sink.lock().await.push('\n');
+        }
+    });
+
+    (transport, captured)
+}
+
+/// A connected MCP client plus everything its child wrote to stderr.
+async fn connect() -> (Client, Arc<tokio::sync::Mutex<String>>) {
+    let (transport, captured) = spawn_with_captured_stderr();
+    match tokio::time::timeout(CONNECT_TIMEOUT, async { ().serve(transport).await }).await {
+        Ok(Ok(client)) => (client, captured),
+        Ok(Err(error)) => panic!(
+            "rmcp handshake with act run --mcp failed: {error}\n--- act stderr ---\n{}",
+            captured.lock().await
+        ),
+        Err(_) => panic!(
+            "MCP client did not connect within {}s; act's stderr so far:\n{}",
+            CONNECT_TIMEOUT.as_secs(),
+            captured.lock().await
+        ),
+    }
+}
+
+#[tokio::test]
+async fn manifest_reports_name_and_version() {
+    // The manifest probe without instantiating: `act inspect` reads only the
+    // `act:component` custom section. An unpacked wasm (raw `cargo build`
+    // output) carries no ceiling and every grant would be refused as
+    // "outside ceiling" — the justfile's `test: pack` ordering exists so
+    // this test finds a packed artifact.
+    let output = {
+        let mut argv = act_argv();
+        let mut cmd = std::process::Command::new(argv.remove(0));
+        cmd.args(argv);
+        cmd.args(["inspect", "component-manifest"])
+            .arg(wasm_path())
+            .output()
+            .expect("run act inspect component-manifest")
+    };
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let manifest: Value = serde_json::from_slice(&output.stdout).expect("manifest is JSON");
+    assert_eq!(
+        manifest["std"]["name"], "{{ project_name }}",
+        "packed manifest must carry the component name"
+    );
+    assert!(
+        manifest["std"]["version"].is_string(),
+        "packed manifest must carry a version, got: {}",
+        manifest["std"]["version"]
+    );
+}
+
+#[tokio::test]
+async fn component_exposes_its_tools() {
+    // A component with no tools is almost always a packaging mistake.
+    let (client, _captured) = connect().await;
+    let tools = client.list_all_tools().await.expect("list_all_tools");
+    assert!(
+        !tools.is_empty(),
+        "component must expose at least one tool"
+    );
+    client.cancel().await.ok();
+}
+
+/// The shape of a real call, kept failing-on-purpose until the first tool
+/// exists: rename `hello` to a real tool, or delete this test once real
+/// coverage lands.
+#[tokio::test]
+#[ignore = "template placeholder — point at a real tool or delete"]
+async fn calls_a_tool_and_reads_the_result() {
+    let (client, _captured) = connect().await;
+    let args = json!({"name": "act"}).as_object().unwrap().clone();
+    let result = client
+        .call_tool(CallToolRequestParams::new("hello").with_arguments(args))
+        .await
+        .expect("call_tool");
+    assert_ne!(result.is_error, Some(true), "call failed: {result:?}");
+    client.cancel().await.ok();
+}

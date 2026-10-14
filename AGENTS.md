@@ -4,7 +4,7 @@
 
 **act-component-template** is a [Copier](https://copier.readthedocs.io/) template for scaffolding new ACT (Agent Component Tools) components in Rust.
 
-Generated projects include: SDK wiring, WIT bindings, justfile, e2e tests (pytest + fastmcp, driving the component over MCP), CI (GitHub Actions), pre-commit hooks (prek), and licenses. Existing components can pull template updates via `copier update`.
+Generated projects include: SDK wiring, WIT bindings, justfile, a rust e2e harness (rmcp client driving `act run --mcp` over stdio — the same client stack as the host bridge), CI (GitHub Actions), pre-commit hooks (prek), and licenses. Existing components can pull template updates via `copier update`.
 
 ## Scaffold a new component
 
@@ -31,10 +31,9 @@ template/               # _subdirectory — only this gets copied to new project
     world.wit           # WIT world definition (exports act:core/tool-provider@0.2.0)
     deps.toml           # wit-deps manifest (fetches act-core from act-spec)
   e2e/
-    conftest.py         # Fixtures: act_command, wasm_path, connected MCP client
-    pyproject.toml      # Suite's own dependency set (uv virtual project)
-    test_info.py        # Smoke test: packed manifest reports name + version
-    test_tools.py       # Smoke test: the component lists at least one tool
+    Cargo.toml          # Standalone host-only crate (rmcp client, tokio)
+    .cargo/config.toml  # Host-target pin + own build-dir (shared-dir collision)
+    tests/e2e.rs        # Suite: manifest probe, tool listing, call example
   justfile              # Recipes: init, setup, build, test
   prek.toml             # Pre-commit hooks: clippy, fmt, yaml, toml
   rust-toolchain.toml   # Nightly + wasm32-wasip2 target
@@ -50,7 +49,7 @@ template/               # _subdirectory — only this gets copied to new project
 
 | Variable | Prompt | Used in |
 |----------|--------|---------|
-| `project_name` | "Component name (e.g. my-tool)" | Cargo.toml, src/lib.rs, justfile, e2e/conftest.py, e2e/test_info.py |
+| `project_name` | "Component name (e.g. my-tool)" | Cargo.toml, src/lib.rs, justfile, e2e/Cargo.toml, e2e/tests/e2e.rs |
 | `description` | "Component description" | src/lib.rs, README.md |
 
 Derived: `project_name | replace('-', '_')` for crate name in justfile wasm path.
@@ -64,7 +63,7 @@ Files with runtime `{{ }}` variables (justfile, GitHub Actions) use `{% raw %}` 
 - **WIT deps**: managed by `wit-deps` (not git submodules). Run `just init` to fetch.
 - **Build target**: `wasm32-wasip2` (nightly toolchain via `rust-toolchain.toml`)
 - **SDK**: `act-sdk` with `#[act_component]` mod-based macro, `#[act_tool]` per function
-- **Testing**: pytest + fastmcp driving `act run --mcp` over stdio, so tests observe what an agent observes
+- **Testing**: the rust rmcp harness drives `act run --mcp` over stdio, so tests observe what an agent observes. Heavyweight components (an instance worth hundreds of MB of RSS, or a slow cold-cache Cranelift compile) must add `-- --test-threads=1` to the justfile's `test` recipe — parallel instances OOM'd a CI runner for servo
 - **CI**: `moonrepo/setup-rust@v1` for toolchain + bins
 - **Pre-commit**: `prek` (clippy for wasm32-wasip2, fmt, yaml/toml checks)
 - **Template sync**: `copier update` pulls template changes into existing components
@@ -75,7 +74,7 @@ Files with runtime `{{ }}` variables (justfile, GitHub Actions) use `{% raw %}` 
 just init    # wit-deps: fetch WIT dependencies
 just setup   # init + prek install (dev environment)
 just build   # cargo build --target wasm32-wasip2 --release
-just test    # build, then pytest e2e suite over MCP
+just test    # build + pack, then the rust e2e suite over MCP
 ```
 
 ## Conventions
@@ -84,7 +83,7 @@ just test    # build, then pytest e2e suite over MCP
 - Always include "act" in crate keywords
 - Components target `wasm32-wasip2` with nightly toolchain
 - `rust-toolchain.toml` over `+nightly` flags
-- Capability grants live in `e2e/conftest.py` (`GRANTS`), derived from the scaffold answers
+- Capability grants go on the `act run` command line inside `e2e/tests/e2e.rs` (`act_command()`); headless `ask` degrades to deny, so a component that touches anything must be granted it
 
 ## Changelog
 
